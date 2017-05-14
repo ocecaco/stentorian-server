@@ -1,0 +1,3 @@
+[submodule "rustlink"]
+	path = rustlink
+	url = git@github.com:ocecaco/rustlink.git
