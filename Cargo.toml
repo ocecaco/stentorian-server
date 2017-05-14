@@ -5,17 +5,11 @@ authors = ["Daniël Louwrink <daniel.louwrink@gmail.com>"]
 
 [dependencies]
 rustlink = { path = "rustlink" }
-jsonrpc-core = "6.0.0"
-jsonrpc-macros = "6.0.0"
-tokio-core = "0.1.6"
-tokio-service = "0.1.0"
-tokio-proto = "0.1.1"
-tokio-io = "0.1.1"
-bytes = "0.4.2"
-serde = "0.9.13"
-serde_derive = "0.9.13"
-serde_json = "0.9.10"
-error-chain = "0.10.0"
-log = "0.3.7"
-env_logger = "0.4.2"
-futures = "0.1.13"
+jsonrpc-core = { path = "jsonrpc/core" }
+jsonrpc-macros = { path = "jsonrpc/macros" }
+serde = "1.0"
+serde_derive = "1.0"
+serde_json = "1.0"
+error-chain = "0.10"
+log = "0.3"
+env_logger = "0.4"
