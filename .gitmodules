@@ -1,6 +1,3 @@
 [submodule "rustlink"]
 	path = rustlink
 	url = git@github.com:ocecaco/rustlink.git
-[submodule "jsonrpc"]
-	path = jsonrpc
-	url = git@github.com:ocecaco/jsonrpc.git
