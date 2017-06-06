@@ -21,7 +21,8 @@ mod rpc;
 mod errors;
 
 use rustlink::grammar::Grammar;
-use rustlink::engine::{GrammarControl, EngineRegistration, GrammarEvent, Recognition, EngineEvent, Attribute, MicrophoneState};
+use rustlink::engine::{GrammarControl, EngineRegistration, GrammarEvent, Recognition, EngineEvent,
+                       Attribute, MicrophoneState};
 use rustlink::resultparser::{Matcher, Match};
 use jsonrpc_core::{Notification, Version, IoHandler, Params};
 use rustlink::engine::Engine;
@@ -50,9 +51,7 @@ mod responsesink {
         pub fn new(stream: TcpStream) -> Self {
             let s = Arc::new(Mutex::new(stream));
 
-            ResponseSink {
-                stream: s,
-            }
+            ResponseSink { stream: s }
         }
 
         pub fn send(&self, response: &str) -> Result<()> {
@@ -75,7 +74,11 @@ struct ConnectionState {
 #[serde(tag = "type", rename_all = "snake_case")]
 #[allow(unknown_lints, enum_variant_names)]
 enum GrammarNotification<'a, 'c: 'b, 'b> {
-    PhraseFinish { foreign_grammar: bool, words: &'b [&'c str], parse: Option<Match<'a>> },
+    PhraseFinish {
+        foreign_grammar: bool,
+        words: &'b [&'c str],
+        parse: Option<Match<'a>>,
+    },
     PhraseRecognitionFailure,
     PhraseStart,
 }
@@ -87,8 +90,7 @@ enum EngineNotification {
     MicrophoneStateChanged { state: MicrophoneState },
 }
 
-fn create_notification<E>(id: u64, method: &str, event: &E)
-                          -> Result<Notification>
+fn create_notification<E>(id: u64, method: &str, event: &E) -> Result<Notification>
     where E: Serialize
 {
     let v_event = serde_json::to_value(event)?;
@@ -122,7 +124,10 @@ impl Rpc for RpcImpl {
             static METHOD: &str = "grammar_notification";
 
             match e {
-                GrammarEvent::PhraseFinish(Some(Recognition { words: words_with_id, foreign })) => {
+                GrammarEvent::PhraseFinish(Some(Recognition {
+                                                    words: words_with_id,
+                                                    foreign,
+                                                })) => {
                     let parse = if !foreign {
                         matcher.perform_match(&words_with_id)
                     } else {
@@ -141,22 +146,29 @@ impl Rpc for RpcImpl {
                     };
 
                     let n = create_notification(id, METHOD, &g).unwrap();
-                    responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
+                    responses
+                        .send(&serde_json::to_string(&n).unwrap())
+                        .unwrap();
                 }
                 GrammarEvent::PhraseFinish(None) => {
                     let g = GrammarNotification::PhraseRecognitionFailure;
                     let n = create_notification(id, METHOD, &g).unwrap();
-                    responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
+                    responses
+                        .send(&serde_json::to_string(&n).unwrap())
+                        .unwrap();
                 }
                 GrammarEvent::PhraseStart => {
                     let g = GrammarNotification::PhraseStart;
                     let n = create_notification(id, METHOD, &g).unwrap();
-                    responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
+                    responses
+                        .send(&serde_json::to_string(&n).unwrap())
+                        .unwrap();
                 }
             }
         };
 
-        let control = self.engine.grammar_load(&grammar, all_recognitions, callback)?;
+        let control = self.engine
+            .grammar_load(&grammar, all_recognitions, callback)?;
 
         state.loaded_grammars.insert(id, control);
 
@@ -217,7 +229,9 @@ impl Rpc for RpcImpl {
                     let event = EngineNotification::Paused;
 
                     let n = create_notification(id, METHOD, &event).unwrap();
-                    responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
+                    responses
+                        .send(&serde_json::to_string(&n).unwrap())
+                        .unwrap();
                 }
                 EngineEvent::AttributeChanged(a) => {
                     let event = match a {
@@ -228,7 +242,9 @@ impl Rpc for RpcImpl {
                     };
 
                     let n = create_notification(id, METHOD, &event).unwrap();
-                    responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
+                    responses
+                        .send(&serde_json::to_string(&n).unwrap())
+                        .unwrap();
                 }
             }
         };
@@ -266,11 +282,11 @@ fn handle_connection(s: TcpStream, engine: Arc<Engine>) -> Result<()> {
         engine: engine,
         responses: responses.clone(),
         state: Mutex::new(ConnectionState {
-            grammar_count: 0,
-            engine_count: 0,
-            loaded_grammars: HashMap::new(),
-            engine_registrations: HashMap::new(),
-        }),
+                              grammar_count: 0,
+                              engine_count: 0,
+                              loaded_grammars: HashMap::new(),
+                              engine_registrations: HashMap::new(),
+                          }),
     };
 
     handler.extend_with(rpc.to_delegate());
