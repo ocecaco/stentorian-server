@@ -8,10 +8,9 @@ error_chain! {
 
     foreign_links {
         Io(::std::io::Error);
+        Serde(::serde_json::Error);
     }
 }
-
-pub type RpcResult<T> = ::std::result::Result<T, RpcError>;
 
 impl From<Error> for RpcError {
     fn from(_e: Error) -> RpcError {
