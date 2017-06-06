@@ -73,6 +73,7 @@ struct ConnectionState {
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
+#[allow(unknown_lints, enum_variant_names)]
 enum GrammarNotification<'a, 'c: 'b, 'b> {
     PhraseFinish { foreign_grammar: bool, words: &'b [&'c str], parse: Option<Match<'a>> },
     PhraseRecognitionFailure,
@@ -86,11 +87,11 @@ enum EngineNotification {
     MicrophoneStateChanged { state: MicrophoneState },
 }
 
-fn create_notification<E>(id: u64, method: &str, event: E)
+fn create_notification<E>(id: u64, method: &str, event: &E)
                           -> Result<Notification>
     where E: Serialize
 {
-    let v_event = serde_json::to_value(&event)?;
+    let v_event = serde_json::to_value(event)?;
     let v_id = serde_json::to_value(&id)?;
     let p = Params::Array(vec![v_id, v_event]);
     let n = Notification {
@@ -139,17 +140,17 @@ impl Rpc for RpcImpl {
                         parse: parse,
                     };
 
-                    let n = create_notification(id, METHOD, g).unwrap();
+                    let n = create_notification(id, METHOD, &g).unwrap();
                     responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
                 }
                 GrammarEvent::PhraseFinish(None) => {
                     let g = GrammarNotification::PhraseRecognitionFailure;
-                    let n = create_notification(id, METHOD, g).unwrap();
+                    let n = create_notification(id, METHOD, &g).unwrap();
                     responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
                 }
                 GrammarEvent::PhraseStart => {
                     let g = GrammarNotification::PhraseStart;
-                    let n = create_notification(id, METHOD, g).unwrap();
+                    let n = create_notification(id, METHOD, &g).unwrap();
                     responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
                 }
             }
@@ -215,7 +216,7 @@ impl Rpc for RpcImpl {
 
                     let event = EngineNotification::Paused;
 
-                    let n = create_notification(id, METHOD, event).unwrap();
+                    let n = create_notification(id, METHOD, &event).unwrap();
                     responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
                 }
                 EngineEvent::AttributeChanged(a) => {
@@ -226,7 +227,7 @@ impl Rpc for RpcImpl {
                         }
                     };
 
-                    let n = create_notification(id, METHOD, event).unwrap();
+                    let n = create_notification(id, METHOD, &event).unwrap();
                     responses.send(&serde_json::to_string(&n).unwrap()).unwrap();
                 }
             }
@@ -293,9 +294,11 @@ fn serve() -> Result<()> {
     rustlink::initialize()?;
 
     let listener = TcpListener::bind("0.0.0.0:1337")?;
+    info!("Listening on 0.0.0.0:1337");
     let engine = Arc::new(Engine::connect()?);
 
     for client in listener.incoming() {
+        info!("Accepted new connection");
         let engine_clone = engine.clone();
         let stream = client?;
         thread::spawn(move || handle_connection(stream, engine_clone));
