@@ -1,5 +1,7 @@
 use jsonrpc_core::Error as RpcError;
 use jsonrpc_core::ErrorCode;
+use error_chain::ChainedError;
+use serde_json;
 
 error_chain! {
     links {
@@ -13,11 +15,11 @@ error_chain! {
 }
 
 impl From<Error> for RpcError {
-    fn from(_e: Error) -> RpcError {
+    fn from(e: Error) -> RpcError {
         RpcError {
-            code: ErrorCode::ServerError(-2),
-            message: "an error occurred".to_owned(),
-            data: None,
+            code: ErrorCode::ServerError(-1),
+            message: e.display().to_string(),
+            data: e.backtrace().map(|b| serde_json::to_value(b).unwrap()),
         }
     }
 }

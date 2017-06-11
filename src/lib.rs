@@ -26,11 +26,12 @@ use rustlink::engine::{GrammarControl, EngineRegistration, GrammarEvent, Recogni
 use rustlink::resultparser::{Matcher, Match};
 use jsonrpc_core::{Notification, Version, IoHandler, Params};
 use rustlink::engine::Engine;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
 use rpc::Rpc;
 use errors::*;
+use error_chain::ChainedError;
 use std::net::{TcpListener, TcpStream};
 use std::thread;
 use responsesink::ResponseSink;
@@ -55,7 +56,7 @@ mod responsesink {
         }
 
         pub fn send(&self, response: &str) -> Result<()> {
-            let mut s = self.stream.lock().unwrap();
+            let mut s = self.stream.lock().expect("attempt to lock poisoned mutex");
             s.write_all(response.as_bytes())?;
             s.write_all(b"\n")?;
             Ok(())
@@ -90,6 +91,12 @@ enum EngineNotification {
     MicrophoneStateChanged { state: MicrophoneState },
 }
 
+fn log_error<E>(error: E)
+    where E: ChainedError
+{
+    error!("{}", error.display());
+}
+
 fn create_notification<E>(id: u64, method: &str, event: &E) -> Result<Notification>
     where E: Serialize
 {
@@ -111,16 +118,22 @@ struct RpcImpl {
     state: Mutex<ConnectionState>,
 }
 
+impl RpcImpl {
+    fn state(&self) -> MutexGuard<ConnectionState> {
+        self.state.lock().expect("attempt to lock poisoned mutex")
+    }
+}
+
 impl Rpc for RpcImpl {
     fn grammar_load(&self, grammar: Grammar, all_recognitions: bool) -> Result<u64> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state();
         state.grammar_count += 1;
         let id = state.grammar_count;
 
         let matcher = Matcher::new(&grammar);
         let responses = self.responses.clone();
 
-        let callback = move |e| {
+        let inner = move |e| -> Result<()> {
             static METHOD: &str = "grammar_notification";
 
             match e {
@@ -145,25 +158,30 @@ impl Rpc for RpcImpl {
                         parse: parse,
                     };
 
-                    let n = create_notification(id, METHOD, &g).unwrap();
-                    responses
-                        .send(&serde_json::to_string(&n).unwrap())
-                        .unwrap();
+                    let n = create_notification(id, METHOD, &g)?;
+                    responses.send(&serde_json::to_string(&n)?)?;
+                    Ok(())
                 }
                 GrammarEvent::PhraseFinish(None) => {
                     let g = GrammarNotification::PhraseRecognitionFailure;
-                    let n = create_notification(id, METHOD, &g).unwrap();
-                    responses
-                        .send(&serde_json::to_string(&n).unwrap())
-                        .unwrap();
+                    let n = create_notification(id, METHOD, &g)?;
+                    responses.send(&serde_json::to_string(&n)?)?;
+                    Ok(())
                 }
                 GrammarEvent::PhraseStart => {
                     let g = GrammarNotification::PhraseStart;
-                    let n = create_notification(id, METHOD, &g).unwrap();
-                    responses
-                        .send(&serde_json::to_string(&n).unwrap())
-                        .unwrap();
+                    let n = create_notification(id, METHOD, &g)?;
+                    responses.send(&serde_json::to_string(&n)?)?;
+                    Ok(())
                 }
+            }
+        };
+
+        let callback = move |e| {
+            let result = inner(e);
+
+            if let Err(error) = result {
+                log_error(error);
             }
         };
 
@@ -176,76 +194,82 @@ impl Rpc for RpcImpl {
     }
 
     fn grammar_unload(&self, id: u64) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state();
         state.loaded_grammars.remove(&id);
         Ok(())
     }
 
     fn grammar_rule_activate(&self, id: u64, name: String) -> Result<()> {
-        let state = self.state.lock().unwrap();
+        let state = self.state();
         state.loaded_grammars[&id].rule_activate(&name)?;
         Ok(())
     }
 
     fn grammar_rule_deactivate(&self, id: u64, name: String) -> Result<()> {
-        let state = self.state.lock().unwrap();
+        let state = self.state();
         state.loaded_grammars[&id].rule_deactivate(&name)?;
         Ok(())
     }
 
     fn grammar_list_append(&self, id: u64, name: String, word: String) -> Result<()> {
-        let state = self.state.lock().unwrap();
+        let state = self.state();
         state.loaded_grammars[&id].list_append(&name, &word)?;
         Ok(())
     }
 
     fn grammar_list_remove(&self, id: u64, name: String, word: String) -> Result<()> {
-        let state = self.state.lock().unwrap();
+        let state = self.state();
         state.loaded_grammars[&id].list_remove(&name, &word)?;
         Ok(())
     }
 
     fn grammar_list_clear(&self, id: u64, name: String) -> Result<()> {
-        let state = self.state.lock().unwrap();
+        let state = self.state();
         state.loaded_grammars[&id].list_clear(&name)?;
         Ok(())
     }
 
     fn engine_register(&self) -> Result<u64> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state();
         state.engine_count += 1;
         let id = state.engine_count;
 
         let responses = self.responses.clone();
         let engine = self.engine.clone();
 
-        let callback = move |e| {
+        let inner = move |e| -> Result<()> {
             static METHOD: &str = "engine_notification";
 
             match e {
                 EngineEvent::Paused(cookie) => {
-                    engine.resume(cookie).unwrap();
+                    engine.resume(cookie)?;
 
                     let event = EngineNotification::Paused;
 
-                    let n = create_notification(id, METHOD, &event).unwrap();
-                    responses
-                        .send(&serde_json::to_string(&n).unwrap())
-                        .unwrap();
+                    let n = create_notification(id, METHOD, &event)?;
+                    responses.send(&serde_json::to_string(&n)?)?;
+                    Ok(())
                 }
                 EngineEvent::AttributeChanged(a) => {
                     let event = match a {
                         Attribute::MicrophoneState => {
-                            let state = engine.microphone_get_state().unwrap();
+                            let state = engine.microphone_get_state()?;
                             EngineNotification::MicrophoneStateChanged { state }
                         }
                     };
 
-                    let n = create_notification(id, METHOD, &event).unwrap();
-                    responses
-                        .send(&serde_json::to_string(&n).unwrap())
-                        .unwrap();
+                    let n = create_notification(id, METHOD, &event)?;
+                    responses.send(&serde_json::to_string(&n)?)?;
+                    Ok(())
                 }
+            }
+        };
+
+        let callback = move |e| {
+            let result = inner(e);
+
+            if let Err(error) = result {
+                log_error(error);
             }
         };
 
@@ -256,7 +280,7 @@ impl Rpc for RpcImpl {
     }
 
     fn engine_unregister(&self, id: u64) -> Result<()> {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.state();
         state.engine_registrations.remove(&id);
         Ok(())
     }
@@ -323,8 +347,10 @@ fn serve() -> Result<()> {
     Ok(())
 }
 
-pub fn main() {
-    env_logger::init().unwrap();
+quick_main!(serve);
 
-    serve().unwrap();
+pub fn lib_main() {
+    env_logger::init().expect("logger initialization failed");
+
+    main();
 }
