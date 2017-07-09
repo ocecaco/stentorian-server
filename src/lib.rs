@@ -1,4 +1,4 @@
-extern crate rustlink;
+extern crate stentorian;
 
 #[macro_use]
 extern crate serde_derive;
@@ -20,12 +20,12 @@ extern crate error_chain;
 mod rpc;
 mod errors;
 
-use rustlink::grammar::Grammar;
-use rustlink::engine::{GrammarControl, EngineRegistration, GrammarEvent, Recognition, EngineEvent,
+use stentorian::grammar::Grammar;
+use stentorian::engine::{GrammarControl, EngineRegistration, GrammarEvent, Recognition, EngineEvent,
                        Attribute, MicrophoneState};
-use rustlink::resultparser::{Matcher, Match};
+use stentorian::resultparser::{Matcher, Match};
 use jsonrpc_core::{Notification, Version, IoHandler, Params};
-use rustlink::engine::Engine;
+use stentorian::engine::Engine;
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::io::{BufRead, BufReader};
 use std::collections::HashMap;
@@ -295,7 +295,7 @@ impl Rpc for RpcImpl {
 }
 
 fn handle_connection(s: TcpStream, engine: Arc<Engine>) -> Result<()> {
-    rustlink::initialize()?;
+    stentorian::initialize()?;
 
     let mut handler = IoHandler::new();
 
@@ -331,7 +331,7 @@ fn handle_connection(s: TcpStream, engine: Arc<Engine>) -> Result<()> {
 }
 
 fn serve() -> Result<()> {
-    rustlink::initialize()?;
+    stentorian::initialize()?;
 
     let listener = TcpListener::bind("0.0.0.0:1337")?;
     info!("Listening on 0.0.0.0:1337");

@@ -5,7 +5,7 @@ use serde_json;
 
 error_chain! {
     links {
-        RustLink(::rustlink::errors::Error, ::rustlink::errors::ErrorKind);
+        Stentorian(::stentorian::errors::Error, ::stentorian::errors::ErrorKind);
     }
 
     foreign_links {

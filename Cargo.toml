@@ -1,10 +1,10 @@
 [package]
-name = "rustlink-server"
+name = "stentorian-server"
 version = "0.1.0"
 authors = ["Daniël Louwrink <daniel.louwrink@gmail.com>"]
 
 [dependencies]
-rustlink = { path = "rustlink" }
+stentorian = { path = "stentorian" }
 jsonrpc-core = { git = "https://github.com/ocecaco/jsonrpc" }
 jsonrpc-macros = { git = "https://github.com/ocecaco/jsonrpc" }
 serde = "1.0"

@@ -1,6 +1,6 @@
-use rustlink::grammar::Grammar;
+use stentorian::grammar::Grammar;
 use errors::Error;
-use rustlink::engine::MicrophoneState;
+use stentorian::engine::MicrophoneState;
 
 build_rpc_trait! {
     pub trait Rpc {

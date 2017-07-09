@@ -1,5 +1,5 @@
-extern crate rustlink_server;
+extern crate stentorian_server;
 
 fn main() {
-    rustlink_server::lib_main();
+    stentorian_server::lib_main();
 }
