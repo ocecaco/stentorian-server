@@ -36,5 +36,8 @@ build_rpc_trait! {
 
         #[rpc(name = "microphone_get_state")]
         fn microphone_get_state(&self) -> Result<MicrophoneState, Error>;
+
+        #[rpc(name = "get_current_user")]
+        fn get_current_user(&self) -> Result<Option<String>, Error>;
     }
 }

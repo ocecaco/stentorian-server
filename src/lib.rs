@@ -292,6 +292,10 @@ impl Rpc for RpcImpl {
     fn microphone_get_state(&self) -> Result<MicrophoneState> {
         Ok(self.engine.microphone_get_state()?)
     }
+
+    fn get_current_user(&self) -> Result<Option<String>> {
+        Ok(self.engine.get_current_user()?)
+    }
 }
 
 fn handle_connection(s: TcpStream, engine: Arc<Engine>) -> Result<()> {
