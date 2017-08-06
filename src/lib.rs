@@ -17,338 +17,86 @@ extern crate env_logger;
 #[macro_use]
 extern crate error_chain;
 
+extern crate bytes;
+extern crate futures;
+extern crate tokio_io;
+extern crate tokio_core;
+
 mod rpc;
+mod rpcimpl;
 mod errors;
+mod linecodec;
+mod notifications;
 
-use stentorian::grammar::Grammar;
-use stentorian::engine::{GrammarControl, EngineRegistration, GrammarEvent, Recognition, EngineEvent,
-                       Attribute, MicrophoneState};
-use stentorian::resultparser::{Matcher, Match};
-use jsonrpc_core::{Notification, Version, IoHandler, Params};
+use jsonrpc_core::IoHandler;
 use stentorian::engine::Engine;
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::io::{BufRead, BufReader};
-use std::collections::HashMap;
+use std::sync::Arc;
 use rpc::Rpc;
+use rpcimpl::RpcImpl;
 use errors::*;
-use error_chain::ChainedError;
-use std::net::{TcpListener, TcpStream};
-use std::thread;
-use responsesink::ResponseSink;
-use serde::Serialize;
+use std::str;
+use tokio_io::AsyncRead;
+use futures::Future;
+use futures::Stream;
+use tokio_core::net::TcpListener;
+use tokio_core::reactor::Core;
+use linecodec::LineCodec;
+use futures::sync::mpsc;
 
-mod responsesink {
-    use std::net::TcpStream;
-    use std::sync::{Arc, Mutex};
-    use errors::*;
-    use std::io::Write;
 
-    #[derive(Debug, Clone)]
-    pub struct ResponseSink {
-        stream: Arc<Mutex<TcpStream>>,
-    }
+fn run_server() -> Result<()> {
+    let mut core = Core::new()?;
+    let handle = core.handle();
 
-    impl ResponseSink {
-        pub fn new(stream: TcpStream) -> Self {
-            let s = Arc::new(Mutex::new(stream));
+    let addr = "0.0.0.0:1337".parse().unwrap();
+    let listener = TcpListener::bind(&addr, &handle)?;
 
-            ResponseSink { stream: s }
-        }
+    let engine = Arc::new(Engine::connect()?);
 
-        pub fn send(&self, response: &str) -> Result<()> {
-            let mut s = self.stream.lock().expect("attempt to lock poisoned mutex");
-            s.write_all(response.as_bytes())?;
-            s.write_all(b"\n")?;
-            Ok(())
-        }
-    }
-}
+    let server = listener.incoming().for_each(|(sock, _)| {
+        let framed = AsyncRead::framed(sock, LineCodec);
+        let (responses, requests) = framed.split();
 
-struct ConnectionState {
-    grammar_count: u64,
-    engine_count: u64,
-    loaded_grammars: HashMap<u64, GrammarControl>,
-    engine_registrations: HashMap<u64, EngineRegistration>,
-}
+        let (notifications_tx, notifications_rx) = mpsc::unbounded();
+        let notifications_rx = notifications_rx
+            .map_err(|()| panic!("channel receive should never fail"))
+            .and_then(|r| r);
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-#[allow(unknown_lints, enum_variant_names)]
-enum GrammarNotification<'a, 'c: 'b, 'b> {
-    PhraseFinish {
-        foreign_grammar: bool,
-        words: &'b [&'c str],
-        parse: Option<Match<'a>>,
-    },
-    PhraseRecognitionFailure,
-    PhraseStart,
-}
+        let mut handler = IoHandler::new();
+        let rpc = RpcImpl::new(engine.clone(), notifications_tx);
+        handler.extend_with(rpc.to_delegate());
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum EngineNotification {
-    Paused,
-    MicrophoneStateChanged { state: MicrophoneState },
-}
+        let request_results = requests
+            .and_then(move |r| {
+                handler.handle_request(&r)
+                    .map_err(|()| panic!("handle_request should never fail"))
+            })
+            .filter_map(|x| x)
+            .from_err();
 
-fn log_error<E>(error: E)
-    where E: ChainedError
-{
-    error!("{}", error.display());
-}
+        let merged = request_results
+            .select(notifications_rx);
 
-fn create_notification<E>(id: u64, method: &str, event: &E) -> Result<Notification>
-    where E: Serialize
-{
-    let v_event = serde_json::to_value(event)?;
-    let v_id = serde_json::to_value(&id)?;
-    let p = Params::Array(vec![v_id, v_event]);
-    let n = Notification {
-        jsonrpc: Some(Version::V2),
-        method: method.to_owned(),
-        params: Some(p),
-    };
+        let handle_connection = merged.forward(responses)
+            .map(|_| ())
+            .map_err(|e| error!("{}", e));
 
-    Ok(n)
-}
-
-struct RpcImpl {
-    engine: Arc<Engine>,
-    responses: ResponseSink,
-    state: Mutex<ConnectionState>,
-}
-
-impl RpcImpl {
-    fn state(&self) -> MutexGuard<ConnectionState> {
-        self.state.lock().expect("attempt to lock poisoned mutex")
-    }
-}
-
-impl Rpc for RpcImpl {
-    fn grammar_load(&self, grammar: Grammar, all_recognitions: bool) -> Result<u64> {
-        let mut state = self.state();
-        state.grammar_count += 1;
-        let id = state.grammar_count;
-
-        let matcher = Matcher::new(&grammar);
-        let responses = self.responses.clone();
-
-        let inner = move |e| -> Result<()> {
-            static METHOD: &str = "grammar_notification";
-
-            match e {
-                GrammarEvent::PhraseFinish(Some(Recognition {
-                                                    words: words_with_id,
-                                                    foreign,
-                                                })) => {
-                    let parse = if !foreign {
-                        matcher.perform_match(&words_with_id)
-                    } else {
-                        None
-                    };
-
-                    let words_only = words_with_id
-                        .iter()
-                        .map(|&(ref w, _)| w as &str)
-                        .collect::<Vec<_>>();
-
-                    let g = GrammarNotification::PhraseFinish {
-                        foreign_grammar: foreign,
-                        words: &words_only,
-                        parse: parse,
-                    };
-
-                    let n = create_notification(id, METHOD, &g)?;
-                    responses.send(&serde_json::to_string(&n)?)?;
-                    Ok(())
-                }
-                GrammarEvent::PhraseFinish(None) => {
-                    let g = GrammarNotification::PhraseRecognitionFailure;
-                    let n = create_notification(id, METHOD, &g)?;
-                    responses.send(&serde_json::to_string(&n)?)?;
-                    Ok(())
-                }
-                GrammarEvent::PhraseStart => {
-                    let g = GrammarNotification::PhraseStart;
-                    let n = create_notification(id, METHOD, &g)?;
-                    responses.send(&serde_json::to_string(&n)?)?;
-                    Ok(())
-                }
-            }
-        };
-
-        let callback = move |e| {
-            let result = inner(e);
-
-            if let Err(error) = result {
-                log_error(error);
-            }
-        };
-
-        let control = self.engine
-            .grammar_load(&grammar, all_recognitions, callback)?;
-
-        state.loaded_grammars.insert(id, control);
-
-        Ok(id)
-    }
-
-    fn grammar_unload(&self, id: u64) -> Result<()> {
-        let mut state = self.state();
-        state.loaded_grammars.remove(&id);
+        handle.spawn(handle_connection);
         Ok(())
-    }
+    });
 
-    fn grammar_rule_activate(&self, id: u64, name: String) -> Result<()> {
-        let state = self.state();
-        state.loaded_grammars[&id].rule_activate(&name)?;
-        Ok(())
-    }
-
-    fn grammar_rule_deactivate(&self, id: u64, name: String) -> Result<()> {
-        let state = self.state();
-        state.loaded_grammars[&id].rule_deactivate(&name)?;
-        Ok(())
-    }
-
-    fn grammar_list_append(&self, id: u64, name: String, word: String) -> Result<()> {
-        let state = self.state();
-        state.loaded_grammars[&id].list_append(&name, &word)?;
-        Ok(())
-    }
-
-    fn grammar_list_remove(&self, id: u64, name: String, word: String) -> Result<()> {
-        let state = self.state();
-        state.loaded_grammars[&id].list_remove(&name, &word)?;
-        Ok(())
-    }
-
-    fn grammar_list_clear(&self, id: u64, name: String) -> Result<()> {
-        let state = self.state();
-        state.loaded_grammars[&id].list_clear(&name)?;
-        Ok(())
-    }
-
-    fn engine_register(&self) -> Result<u64> {
-        let mut state = self.state();
-        state.engine_count += 1;
-        let id = state.engine_count;
-
-        let responses = self.responses.clone();
-        let engine = self.engine.clone();
-
-        let inner = move |e| -> Result<()> {
-            static METHOD: &str = "engine_notification";
-
-            match e {
-                EngineEvent::Paused(cookie) => {
-                    engine.resume(cookie)?;
-
-                    let event = EngineNotification::Paused;
-
-                    let n = create_notification(id, METHOD, &event)?;
-                    responses.send(&serde_json::to_string(&n)?)?;
-                    Ok(())
-                }
-                EngineEvent::AttributeChanged(a) => {
-                    let event = match a {
-                        Attribute::MicrophoneState => {
-                            let state = engine.microphone_get_state()?;
-                            EngineNotification::MicrophoneStateChanged { state }
-                        }
-                    };
-
-                    let n = create_notification(id, METHOD, &event)?;
-                    responses.send(&serde_json::to_string(&n)?)?;
-                    Ok(())
-                }
-            }
-        };
-
-        let callback = move |e| {
-            let result = inner(e);
-
-            if let Err(error) = result {
-                log_error(error);
-            }
-        };
-
-        let registration = self.engine.register(callback)?;
-        state.engine_registrations.insert(id, registration);
-
-        Ok(id)
-    }
-
-    fn engine_unregister(&self, id: u64) -> Result<()> {
-        let mut state = self.state();
-        state.engine_registrations.remove(&id);
-        Ok(())
-    }
-
-    fn microphone_set_state(&self, state: MicrophoneState) -> Result<()> {
-        Ok(self.engine.microphone_set_state(state)?)
-    }
-
-    fn microphone_get_state(&self) -> Result<MicrophoneState> {
-        Ok(self.engine.microphone_get_state()?)
-    }
-
-    fn get_current_user(&self) -> Result<Option<String>> {
-        Ok(self.engine.get_current_user()?)
-    }
-}
-
-fn handle_connection(s: TcpStream, engine: Arc<Engine>) -> Result<()> {
-    stentorian::initialize()?;
-
-    let mut handler = IoHandler::new();
-
-    let stream = s.try_clone()?;
-    let responses = ResponseSink::new(stream);
-
-    let rpc = RpcImpl {
-        engine: engine,
-        responses: responses.clone(),
-        state: Mutex::new(ConnectionState {
-                              grammar_count: 0,
-                              engine_count: 0,
-                              loaded_grammars: HashMap::new(),
-                              engine_registrations: HashMap::new(),
-                          }),
-    };
-
-    handler.extend_with(rpc.to_delegate());
-
-    let reader = BufReader::new(s);
-    for request in reader.lines() {
-        let response = handler.handle_request_sync(&request?);
-
-        match response {
-            None => {}
-            Some(r) => {
-                responses.send(&r)?;
-            }
-        }
-    }
+    core.run(server)?;
 
     Ok(())
 }
+
+
+
+
 
 fn serve() -> Result<()> {
     stentorian::initialize()?;
-
-    let listener = TcpListener::bind("0.0.0.0:1337")?;
-    info!("Listening on 0.0.0.0:1337");
-    let engine = Arc::new(Engine::connect()?);
-
-    for client in listener.incoming() {
-        info!("Accepted new connection");
-        let engine_clone = engine.clone();
-        let stream = client?;
-        thread::spawn(move || handle_connection(stream, engine_clone));
-    }
-
-    Ok(())
+    run_server()
 }
 
 quick_main!(serve);
