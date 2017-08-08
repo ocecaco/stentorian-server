@@ -42,7 +42,7 @@ use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
 use linecodec::LineCodec;
 use futures::sync::mpsc;
-
+use futures::stream;
 
 fn run_server() -> Result<()> {
     let mut core = Core::new()?;
@@ -51,16 +51,21 @@ fn run_server() -> Result<()> {
     let addr = "0.0.0.0:1337".parse().unwrap();
     let listener = TcpListener::bind(&addr, &handle)?;
 
+    info!("listening for connections");
+
     let engine = Arc::new(Engine::connect()?);
 
     let server = listener.incoming().for_each(|(sock, _)| {
+        info!("new connection");
         let framed = AsyncRead::framed(sock, LineCodec);
         let (responses, requests) = framed.split();
 
         let (notifications_tx, notifications_rx) = mpsc::unbounded();
         let notifications_rx = notifications_rx
             .map_err(|()| panic!("channel receive should never fail"))
-            .and_then(|r| r);
+            .and_then(|r| r)
+            .map(|x| Some(x))
+            .chain(stream::once(Ok(None)));
 
         let mut handler = IoHandler::new();
         let rpc = RpcImpl::new(engine.clone(), notifications_tx);
@@ -72,14 +77,27 @@ fn run_server() -> Result<()> {
                     .map_err(|()| panic!("handle_request should never fail"))
             })
             .filter_map(|x| x)
-            .from_err();
+            .from_err()
+            .map(|x| Some(x))
+            .chain(stream::once(Ok(None)));
 
         let merged = request_results
-            .select(notifications_rx);
+            .select(notifications_rx)
+            .take_while(|x| Ok(x.is_some()))
+            .filter_map(|x| x);
 
         let handle_connection = merged.forward(responses)
-            .map(|_| ())
-            .map_err(|e| error!("{}", e));
+            .then(|r: Result<_>| {
+                match r {
+                    Ok(_) => {},
+                    Err(e) => {
+                        error!("{}", e);
+                    }
+                }
+
+                info!("connection closed");
+                Ok(())
+            });
 
         handle.spawn(handle_connection);
         Ok(())
@@ -89,10 +107,6 @@ fn run_server() -> Result<()> {
 
     Ok(())
 }
-
-
-
-
 
 fn serve() -> Result<()> {
     stentorian::initialize()?;
