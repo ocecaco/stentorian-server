@@ -12,6 +12,18 @@ error_chain! {
         Io(::std::io::Error);
         Serde(::serde_json::Error);
     }
+
+    errors {
+        UnknownEntityId(id: u64) {
+            description("unknown entity ID")
+            display("unknown entity ID: {}", id)
+        }
+
+        WrongGrammarType(id: u64, expected_type: String) {
+            description("wrong grammar type")
+            display("wrong grammar type '{}' for grammar ID {}", expected_type, id)
+        }
+    }
 }
 
 impl From<Error> for RpcError {

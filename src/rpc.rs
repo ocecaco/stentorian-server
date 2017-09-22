@@ -7,6 +7,9 @@ build_rpc_trait! {
         #[rpc(name = "grammar_load")]
         fn grammar_load(&self, Grammar, bool) -> Result<u64, Error>;
 
+        #[rpc(name = "select_grammar_load")]
+        fn select_grammar_load(&self, Vec<String>, Vec<String>, bool) -> Result<u64, Error>;
+
         #[rpc(name = "grammar_unload")]
         fn grammar_unload(&self, u64) -> Result<(), Error>;
 
@@ -24,6 +27,21 @@ build_rpc_trait! {
 
         #[rpc(name = "grammar_list_clear")]
         fn grammar_list_clear(&self, u64, String) -> Result<(), Error>;
+
+        #[rpc(name = "grammar_text_set")]
+        fn grammar_text_set(&self, u64, String) -> Result<(), Error>;
+
+        #[rpc(name = "grammar_text_change")]
+        fn grammar_text_change(&self, u64, u32, u32, String) -> Result<(), Error>;
+
+        #[rpc(name = "grammar_text_delete")]
+        fn grammar_text_delete(&self, u64, u32, u32) -> Result<(), Error>;
+
+        #[rpc(name = "grammar_text_insert")]
+        fn grammar_text_insert(&self, u64, u32, String) -> Result<(), Error>;
+
+        #[rpc(name = "grammar_text_get")]
+        fn grammar_text_get(&self, u64) -> Result<String, Error>;
 
         #[rpc(name = "engine_register")]
         fn engine_register(&self) -> Result<u64, Error>;

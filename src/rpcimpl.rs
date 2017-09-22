@@ -1,5 +1,5 @@
 use stentorian::grammar::Grammar;
-use stentorian::engine::{GrammarControl, EngineRegistration, GrammarEvent, MicrophoneState};
+use stentorian::engine::{GrammarControl, EngineRegistration, GrammarEvent, GrammarSelect, GrammarLists, MicrophoneState};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::collections::HashMap;
 use futures::sync::mpsc;
@@ -14,6 +14,22 @@ struct ConnectionState {
     engine_count: u64,
     loaded_grammars: HashMap<u64, GrammarControl>,
     engine_registrations: HashMap<u64, EngineRegistration>,
+}
+
+impl ConnectionState {
+    fn grammar(&self, id: u64) -> Result<&GrammarControl> {
+        Ok(self.loaded_grammars.get(&id).ok_or(ErrorKind::UnknownEntityId(id))?)
+    }
+
+    fn grammar_select(&self, id: u64) -> Result<&GrammarSelect> {
+        let grammar = self.grammar(id)?;
+        Ok(grammar.select_context().ok_or_else(|| ErrorKind::WrongGrammarType(id, "selection".to_owned()))?)
+    }
+
+    fn grammar_lists(&self, id: u64) -> Result<&GrammarLists> {
+        let grammar = self.grammar(id)?;
+        Ok(grammar.lists().ok_or_else(|| ErrorKind::WrongGrammarType(id, "list".to_owned()))?)
+    }
 }
 
 pub struct RpcImpl {
@@ -39,6 +55,7 @@ impl RpcImpl {
     fn state(&self) -> MutexGuard<ConnectionState> {
         self.state.lock().expect("attempt to lock poisoned mutex")
     }
+
 }
 
 impl Rpc for RpcImpl {
@@ -51,7 +68,7 @@ impl Rpc for RpcImpl {
         let matcher = Matcher::new(&grammar);
 
         let convert_event = move |e: &GrammarEvent| {
-            let n = GrammarNotification::from_event(&matcher, e);
+            let n = GrammarNotification::from_event(Some(&matcher), e);
             Ok(create_notification(id, "grammar_notification", &n)?)
         };
 
@@ -66,6 +83,29 @@ impl Rpc for RpcImpl {
         Ok(id)
     }
 
+    fn select_grammar_load(&self, start_words: Vec<String>, through_words: Vec<String>, all_recognitions: bool) -> Result<u64> {
+        let mut state = self.state();
+        state.grammar_count += 1;
+        let id = state.grammar_count;
+
+        let notifications = self.notifications.clone();
+
+        let convert_event = move |e: &GrammarEvent| {
+            let n = GrammarNotification::from_event(None, e);
+            Ok(create_notification(id, "grammar_notification", &n)?)
+        };
+
+        let callback = move |e| {
+            let result = convert_event(&e);
+            notifications.send(result).unwrap();
+        };
+
+        let control = self.engine.select_grammar_load(&start_words, &through_words, all_recognitions, callback)?;
+        state.loaded_grammars.insert(id, control);
+
+        Ok(id)
+    }
+
     fn grammar_unload(&self, id: u64) -> Result<()> {
         let mut state = self.state();
         state.loaded_grammars.remove(&id);
@@ -74,32 +114,62 @@ impl Rpc for RpcImpl {
 
     fn grammar_rule_activate(&self, id: u64, name: String) -> Result<()> {
         let state = self.state();
-        state.loaded_grammars[&id].rule_activate(&name)?;
+        state.grammar(id)?.rule_activate(&name)?;
         Ok(())
     }
 
     fn grammar_rule_deactivate(&self, id: u64, name: String) -> Result<()> {
         let state = self.state();
-        state.loaded_grammars[&id].rule_deactivate(&name)?;
+        state.grammar(id)?.rule_deactivate(&name)?;
         Ok(())
     }
 
     fn grammar_list_append(&self, id: u64, name: String, word: String) -> Result<()> {
         let state = self.state();
-        state.loaded_grammars[&id].list_append(&name, &word)?;
+        state.grammar_lists(id)?.list_append(&name, &word)?;
         Ok(())
     }
 
     fn grammar_list_remove(&self, id: u64, name: String, word: String) -> Result<()> {
         let state = self.state();
-        state.loaded_grammars[&id].list_remove(&name, &word)?;
+        state.grammar_lists(id)?.list_remove(&name, &word)?;
         Ok(())
     }
 
     fn grammar_list_clear(&self, id: u64, name: String) -> Result<()> {
         let state = self.state();
-        state.loaded_grammars[&id].list_clear(&name)?;
+        state.grammar_lists(id)?.list_clear(&name)?;
         Ok(())
+    }
+
+    fn grammar_text_set(&self, id: u64, text: String) -> Result<()> {
+        let state = self.state();
+        state.grammar_select(id)?.text_set(&text)?;
+        Ok(())
+    }
+
+    fn grammar_text_change(&self, id: u64, start: u32, stop: u32, text: String) -> Result<()> {
+        let state = self.state();
+        state.grammar_select(id)?.text_change(start, stop, &text)?;
+        Ok(())
+    }
+
+    fn grammar_text_delete(&self, id: u64, start: u32, stop: u32) -> Result<()> {
+        let state = self.state();
+        state.grammar_select(id)?.text_delete(start, stop)?;
+        Ok(())
+    }
+
+    fn grammar_text_insert(&self, id: u64, start: u32, text: String) -> Result<()> {
+        let state = self.state();
+        state.grammar_select(id)?.text_insert(start, &text)?;
+        Ok(())
+    }
+
+    fn grammar_text_get(&self, id: u64) -> Result<String> {
+        let state = self.state();
+        let text = state.grammar_select(id)?.text_get()?;
+        Ok(text)
     }
 
     fn engine_register(&self) -> Result<u64> {

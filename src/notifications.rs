@@ -21,15 +21,20 @@ pub enum GrammarNotification<'a, 'c> {
 }
 
 impl<'a, 'c> GrammarNotification<'a, 'c> {
-    pub fn from_event(matcher: &'a Matcher, e: &'c GrammarEvent) -> Self {
+    pub fn from_event(matcher: Option<&'a Matcher>, e: &'c GrammarEvent) -> Self {
         match *e {
             GrammarEvent::PhraseFinish(Some(Recognition {
                 words: ref words_with_id,
-                foreign,
+                mut foreign,
             })) => {
-                let parse = if !foreign {
-                    matcher.perform_match(&words_with_id)
+                let parse = if let Some(m) = matcher {
+                    if !foreign {
+                        m.perform_match(&words_with_id)
+                    } else {
+                        None
+                    }
                 } else {
+                    foreign = true;
                     None
                 };
 
