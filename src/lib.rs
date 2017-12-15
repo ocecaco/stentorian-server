@@ -31,10 +31,10 @@ mod notifications;
 use jsonrpc_core::IoHandler;
 use stentorian::engine::Engine;
 use std::sync::Arc;
+use std::env;
 use rpc::Rpc;
 use rpcimpl::RpcImpl;
 use errors::*;
-use std::str;
 use tokio_io::AsyncRead;
 use futures::Future;
 use futures::Stream;
@@ -44,11 +44,11 @@ use linecodec::LineCodec;
 use futures::sync::mpsc;
 use futures::stream;
 
-fn run_server() -> Result<()> {
+fn run_server(host_port: &str) -> Result<()> {
     let mut core = Core::new()?;
     let handle = core.handle();
 
-    let addr = "0.0.0.0:1337".parse().unwrap();
+    let addr = host_port.parse().unwrap();
     let listener = TcpListener::bind(&addr, &handle)?;
 
     info!("listening for connections");
@@ -110,7 +110,8 @@ fn run_server() -> Result<()> {
 
 fn serve() -> Result<()> {
     stentorian::initialize()?;
-    run_server()
+    let args: Vec<String> = env::args().collect();
+    run_server(&args[1])
 }
 
 quick_main!(serve);

@@ -74,7 +74,7 @@ impl Rpc for RpcImpl {
 
         let callback = move |e| {
             let result = convert_event(&e);
-            notifications.send(result).unwrap();
+            notifications.unbounded_send(result).unwrap();
         };
 
         let control = self.engine.grammar_load(&grammar, all_recognitions, callback)?;
@@ -97,7 +97,7 @@ impl Rpc for RpcImpl {
 
         let callback = move |e| {
             let result = convert_event(&e);
-            notifications.send(result).unwrap();
+            notifications.unbounded_send(result).unwrap();
         };
 
         let control = self.engine.select_grammar_load(&start_words, &through_words, all_recognitions, callback)?;
@@ -187,7 +187,7 @@ impl Rpc for RpcImpl {
 
         let callback = move |e| {
             let result = convert_event(e);
-            notifications.send(result).unwrap();
+            notifications.unbounded_send(result).unwrap();
         };
 
         let registration = self.engine.register(callback)?;
