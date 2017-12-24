@@ -1,7 +1,7 @@
+use bytes::{BufMut, BytesMut};
 use std::io;
-use bytes::{BytesMut, BufMut};
-use tokio_io::codec::{Encoder, Decoder};
 use std::str;
+use tokio_io::codec::{Decoder, Encoder};
 
 pub struct LineCodec;
 
@@ -23,7 +23,7 @@ impl Decoder for LineCodec {
             return match str::from_utf8(&line.as_ref()) {
                 Ok(s) => Ok(Some(s.to_string())),
                 Err(_) => Err(io::Error::new(io::ErrorKind::Other, "invalid string")),
-            }
+            };
         }
 
         Ok(None)

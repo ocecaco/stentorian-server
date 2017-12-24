@@ -1,6 +1,6 @@
+use error_chain::ChainedError;
 use jsonrpc_core::Error as RpcError;
 use jsonrpc_core::ErrorCode;
-use error_chain::ChainedError;
 use serde_json;
 
 error_chain! {

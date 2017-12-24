@@ -1,69 +1,55 @@
-use jsonrpc_core::{Notification, Version, Params};
-use serde_json;
-use serde::Serialize;
-use stentorian::resultparser::{Matcher, Match};
-use stentorian::engine::{GrammarEvent, Recognition, EngineEvent,
-                         Attribute, MicrophoneState};
-use stentorian::engine::Engine;
 use errors::*;
+use jsonrpc_core::{Notification, Params, Version};
+use serde::Serialize;
+use serde_json;
+use stentorian::engine::{EngineEvent, MicrophoneState};
+use stentorian::engine::Engine;
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-#[allow(unknown_lints, enum_variant_names)]
-pub enum GrammarNotification<'a, 'c> {
-    PhraseFinish {
-        foreign_grammar: bool,
-        words: Vec<&'c str>,
-        parse: Option<Match<'a>>,
-    },
-    PhraseRecognitionFailure,
-    PhraseStart,
-}
+// impl<'a, 'c> GrammarNotification<'a, 'c> {
+//     pub fn from_event(matcher: Option<&'a Matcher>, e: &'c GrammarEvent) -> Self {
+//         match *e {
+//             GrammarEvent::PhraseFinish(Some(Recognition {
+//                 words: ref words_with_id,
+//                 mut foreign,
+//             })) => {
+//                 let parse = if let Some(m) = matcher {
+//                     if !foreign {
+//                         m.perform_match(&words_with_id)
+//                     } else {
+//                         None
+//                     }
+//                 } else {
+//                     foreign = true;
+//                     None
+//                 };
 
-impl<'a, 'c> GrammarNotification<'a, 'c> {
-    pub fn from_event(matcher: Option<&'a Matcher>, e: &'c GrammarEvent) -> Self {
-        match *e {
-            GrammarEvent::PhraseFinish(Some(Recognition {
-                words: ref words_with_id,
-                mut foreign,
-            })) => {
-                let parse = if let Some(m) = matcher {
-                    if !foreign {
-                        m.perform_match(&words_with_id)
-                    } else {
-                        None
-                    }
-                } else {
-                    foreign = true;
-                    None
-                };
+//                 let words_only = words_with_id
+//                     .iter()
+//                     .map(|&(ref w, _)| w as &str)
+//                     .collect::<Vec<_>>();
 
-                let words_only = words_with_id
-                    .iter()
-                    .map(|&(ref w, _)| w as &str)
-                    .collect::<Vec<_>>();
-
-                GrammarNotification::PhraseFinish {
-                    foreign_grammar: foreign,
-                    words: words_only,
-                    parse: parse,
-                }
-            }
-            GrammarEvent::PhraseFinish(None) => {
-                GrammarNotification::PhraseRecognitionFailure
-            }
-            GrammarEvent::PhraseStart => {
-                GrammarNotification::PhraseStart
-            }
-        }
-    }
-}
+//                 GrammarNotification::PhraseFinish {
+//                     foreign_grammar: foreign,
+//                     words: words_only,
+//                     parse: parse,
+//                 }
+//             }
+//             GrammarEvent::PhraseFinish(None) => {
+//                 GrammarNotification::PhraseRecognitionFailure
+//             }
+//             GrammarEvent::PhraseStart => {
+//                 GrammarNotification::PhraseStart
+//             }
+//         }
+//     }
+// }
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum EngineNotification {
     Paused,
     MicrophoneStateChanged { state: MicrophoneState },
+    UserChanged { name: Option<String> },
 }
 
 impl EngineNotification {
@@ -76,13 +62,15 @@ impl EngineNotification {
 
                 Ok(event)
             }
-            EngineEvent::AttributeChanged(a) => {
-                let event = match a {
-                    Attribute::MicrophoneState => {
-                        let state = engine.microphone_get_state()?;
-                        EngineNotification::MicrophoneStateChanged { state }
-                    }
-                };
+            EngineEvent::MicrophoneState => {
+                let state = engine.microphone_get_state()?;
+                let event = EngineNotification::MicrophoneStateChanged { state };
+
+                Ok(event)
+            }
+            EngineEvent::UserChanged => {
+                let name = engine.get_current_user()?;
+                let event = EngineNotification::UserChanged { name };
 
                 Ok(event)
             }
@@ -91,7 +79,8 @@ impl EngineNotification {
 }
 
 pub fn create_notification<E>(id: u64, method: &str, event: &E) -> Result<String>
-    where E: Serialize
+where
+    E: Serialize,
 {
     let v_event = serde_json::to_value(event)?;
     let v_id = serde_json::to_value(&id)?;
