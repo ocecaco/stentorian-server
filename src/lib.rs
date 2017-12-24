@@ -35,8 +35,8 @@ use futures::stream;
 use futures::sync::mpsc;
 use jsonrpc_core::IoHandler;
 use linecodec::LineCodec;
-use rpc::Rpc;
-use rpcimpl::RpcImpl;
+use rpc::*;
+use rpcimpl::*;
 use std::env;
 use std::sync::Arc;
 use stentorian::engine::Engine;
@@ -68,8 +68,18 @@ fn run_server(host_port: &str) -> Result<()> {
             .chain(stream::once(Ok(None)));
 
         let mut handler = IoHandler::new();
-        let rpc = RpcImpl::new(engine.clone(), notifications_tx);
-        handler.extend_with(rpc.to_delegate());
+        let rpc_command = RpcCommandImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
+        let rpc_select = RpcSelectImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
+        let rpc_dictation =
+            RpcDictationImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
+        let rpc_catchall =
+            RpcCatchallImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
+        let rpc_engine = RpcEngineImpl(RpcHelper::new(engine.clone(), notifications_tx));
+        handler.extend_with(rpc_command.to_delegate());
+        handler.extend_with(rpc_select.to_delegate());
+        handler.extend_with(rpc_dictation.to_delegate());
+        handler.extend_with(rpc_catchall.to_delegate());
+        handler.extend_with(rpc_engine.to_delegate());
 
         let request_results = requests
             .and_then(move |r| {
