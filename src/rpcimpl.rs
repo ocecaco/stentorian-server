@@ -4,10 +4,11 @@ use notifications::{create_notification, EngineNotification};
 use rpc::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use stentorian::engine::{CatchallGrammarControl, CommandGrammarControl, DictationGrammarControl,
-                         EngineRegistration, MicrophoneState, SelectGrammarControl};
-use stentorian::engine::Engine;
+use stentorian::engine::{CatchallGrammarControl, CommandGrammarControl, CommandGrammarEvent,
+                         DictationGrammarControl, Engine, EngineRegistration, MicrophoneState,
+                         SelectGrammarControl};
 use stentorian::grammar::Grammar;
+use stentorian::resultparser::Matcher;
 
 struct ConnectionState<T> {
     counter: u64,
@@ -63,8 +64,6 @@ impl<T> RpcHelper<T> {
     }
 }
 
-static GRAMMAR_NOTIFICATION: &'static str = "grammar_notification";
-
 pub struct RpcCommandImpl(pub RpcHelper<CommandGrammarControl>);
 pub struct RpcSelectImpl(pub RpcHelper<SelectGrammarControl>);
 pub struct RpcDictationImpl(pub RpcHelper<DictationGrammarControl>);
@@ -76,9 +75,14 @@ impl RpcCommand for RpcCommandImpl {
         let mut state = self.0.state();
         let id = state.new_id();
         let notifications = self.0.notifications.clone();
+        let matcher = Matcher::new(&grammar);
 
-        let callback = move |e| {
-            let result = create_notification(id, GRAMMAR_NOTIFICATION, &e);
+        let callback = move |e: CommandGrammarEvent| {
+            let with_matches = e.map(|words| {
+                let matches = matcher.perform_match(&words);
+                (words, matches)
+            });
+            let result = create_notification(id, "command_grammar_notification", &with_matches);
             notifications.unbounded_send(result).unwrap();
         };
 
@@ -132,7 +136,7 @@ impl RpcSelect for RpcSelectImpl {
         let notifications = self.0.notifications.clone();
 
         let callback = move |e| {
-            let result = create_notification(id, GRAMMAR_NOTIFICATION, &e);
+            let result = create_notification(id, "select_grammar_notification", &e);
             notifications.unbounded_send(result).unwrap();
         };
 
@@ -200,7 +204,7 @@ impl RpcDictation for RpcDictationImpl {
         let notifications = self.0.notifications.clone();
 
         let callback = move |e| {
-            let result = create_notification(id, GRAMMAR_NOTIFICATION, &e);
+            let result = create_notification(id, "dictation_grammar_notification", &e);
             notifications.unbounded_send(result).unwrap();
         };
 
@@ -242,7 +246,7 @@ impl RpcCatchall for RpcCatchallImpl {
         let notifications = self.0.notifications.clone();
 
         let callback = move |e| {
-            let result = create_notification(id, GRAMMAR_NOTIFICATION, &e);
+            let result = create_notification(id, "catchall_grammar_notification", &e);
             notifications.unbounded_send(result).unwrap();
         };
 
