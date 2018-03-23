@@ -127,7 +127,7 @@ fn serve() -> Result<()> {
 quick_main!(serve);
 
 pub fn lib_main() {
-    env_logger::init().expect("logger initialization failed");
+    env_logger::init();
 
     main();
 }
