@@ -14,6 +14,9 @@ extern crate env_logger;
 #[macro_use]
 extern crate log;
 
+#[macro_use]
+extern crate structopt;
+
 extern crate failure;
 // #[macro_use]
 // extern crate failure_derive;
@@ -38,21 +41,34 @@ use jsonrpc_core::IoHandler;
 use linecodec::LineCodec;
 use rpc::*;
 use rpcimpl::*;
-use std::env;
 use std::sync::Arc;
 use stentorian::engine::Engine;
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
 use tokio_io::AsyncRead;
+use std::net::{SocketAddr, IpAddr};
+use std::{thread, time};
+use structopt::StructOpt;
 
-fn run_server(host_port: &str) -> Result<()> {
+#[derive(StructOpt, Debug)]
+#[structopt(name = "server")]
+struct Opt {
+    #[structopt(short = "H", long = "host")]
+    host: IpAddr,
+    #[structopt(short = "p", long = "port")]
+    port: u16,
+    #[structopt(short = "w", long = "wait")]
+    wait_seconds: Option<u64>,
+}
+
+fn run_server(options: Opt) -> Result<()> {
     let mut core = Core::new()?;
     let handle = core.handle();
 
-    let addr = host_port.parse().unwrap();
+    let addr = SocketAddr::new(options.host, options.port);
     let listener = TcpListener::bind(&addr, &handle)?;
 
-    info!("listening for connections");
+    info!("listening for connections on {}", addr);
 
     let engine = Arc::new(Engine::connect()?);
 
@@ -121,7 +137,13 @@ fn run_server(host_port: &str) -> Result<()> {
 
 pub fn serve() -> Result<()> {
     env_logger::init();
+    let options = Opt::from_args();
+
+    if let Some(s) = options.wait_seconds {
+        info!("sleeping for {} seconds before connecting to Dragon", s);
+        thread::sleep(time::Duration::from_secs(s))
+    }
+
     stentorian::initialize()?;
-    let args: Vec<String> = env::args().collect();
-    run_server(&args[1])
+    run_server(options)
 }
