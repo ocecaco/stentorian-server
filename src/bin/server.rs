@@ -1,5 +1,7 @@
 extern crate stentorian_server;
 
 fn main() {
-    stentorian_server::lib_main();
+    if let Err(e) = stentorian_server::serve() {
+        println!("{}", e.0);
+    }
 }

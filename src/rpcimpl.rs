@@ -1,4 +1,4 @@
-use errors::*;
+use errors::{Result};
 use futures::sync::mpsc;
 use notifications::{create_notification, EngineNotification};
 use rpc::*;

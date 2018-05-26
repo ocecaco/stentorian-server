@@ -1,4 +1,4 @@
-use errors::Error;
+use errors::MyError as Error;
 use stentorian::engine::MicrophoneState;
 use stentorian::grammar::Grammar;
 

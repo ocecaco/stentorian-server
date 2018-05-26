@@ -14,8 +14,9 @@ extern crate env_logger;
 #[macro_use]
 extern crate log;
 
-#[macro_use]
-extern crate error_chain;
+extern crate failure;
+// #[macro_use]
+// extern crate failure_derive;
 
 extern crate bytes;
 extern crate futures;
@@ -101,7 +102,7 @@ fn run_server(host_port: &str) -> Result<()> {
             match r {
                 Ok(_) => {}
                 Err(e) => {
-                    error!("{}", e);
+                    error!("{}", e.0);
                 }
             }
 
@@ -118,16 +119,9 @@ fn run_server(host_port: &str) -> Result<()> {
     Ok(())
 }
 
-fn serve() -> Result<()> {
+pub fn serve() -> Result<()> {
+    env_logger::init();
     stentorian::initialize()?;
     let args: Vec<String> = env::args().collect();
     run_server(&args[1])
-}
-
-quick_main!(serve);
-
-pub fn lib_main() {
-    env_logger::init();
-
-    main();
 }

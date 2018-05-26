@@ -1,36 +1,24 @@
 use jsonrpc_core::Error as RpcError;
 use jsonrpc_core::ErrorCode;
-use serde_json;
 
-error_chain! {
-    links {
-        Stentorian(::stentorian::errors::Error, ::stentorian::errors::ErrorKind);
-    }
+use failure::Error;
 
-    foreign_links {
-        Io(::std::io::Error);
-        Serde(::serde_json::Error);
-    }
+pub type Result<T> = ::std::result::Result<T, MyError>;
 
-    errors {
-        UnknownEntityId(id: u64) {
-            description("unknown entity ID")
-            display("unknown entity ID: {}", id)
-        }
+pub struct MyError(pub Error);
 
-        WrongGrammarType(id: u64, expected_type: String) {
-            description("wrong grammar type")
-            display("wrong grammar type '{}' for grammar ID {}", expected_type, id)
-        }
+impl<T: Into<Error>> From<T> for MyError {
+    fn from(e: T) -> MyError {
+        MyError(e.into())
     }
 }
 
-impl From<Error> for RpcError {
-    fn from(e: Error) -> RpcError {
+impl From<MyError> for RpcError {
+    fn from(e: MyError) -> RpcError {
         RpcError {
             code: ErrorCode::ServerError(-1),
-            message: e.to_string(),
-            data: e.backtrace().map(|b| serde_json::to_value(b).unwrap()),
+            message: e.0.to_string(),
+            data: None,
         }
     }
 }
