@@ -18,8 +18,6 @@ extern crate log;
 extern crate structopt;
 
 extern crate failure;
-// #[macro_use]
-// extern crate failure_derive;
 
 extern crate bytes;
 extern crate futures;
@@ -46,7 +44,7 @@ use stentorian::engine::Engine;
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
 use tokio_io::AsyncRead;
-use std::net::{SocketAddr, IpAddr};
+use std::net::{IpAddr, SocketAddr};
 use std::{thread, time};
 use structopt::StructOpt;
 
@@ -59,6 +57,26 @@ struct Opt {
     port: u16,
     #[structopt(short = "w", long = "wait")]
     wait_seconds: Option<u64>,
+}
+
+fn create_handler(
+    engine: Arc<Engine>,
+    notifications: mpsc::UnboundedSender<Result<String>>,
+) -> IoHandler {
+    let mut handler = IoHandler::new();
+    let rpc_command = RpcCommandImpl(RpcHelper::new(engine.clone(), notifications.clone()));
+    let rpc_select = RpcSelectImpl(RpcHelper::new(engine.clone(), notifications.clone()));
+    let rpc_dictation = RpcDictationImpl(RpcHelper::new(engine.clone(), notifications.clone()));
+    let rpc_catchall = RpcCatchallImpl(RpcHelper::new(engine.clone(), notifications.clone()));
+    let rpc_engine = RpcEngineImpl(RpcHelper::new(engine.clone(), notifications));
+
+    handler.extend_with(rpc_command.to_delegate());
+    handler.extend_with(rpc_select.to_delegate());
+    handler.extend_with(rpc_dictation.to_delegate());
+    handler.extend_with(rpc_catchall.to_delegate());
+    handler.extend_with(rpc_engine.to_delegate());
+
+    handler
 }
 
 fn run_server(options: Opt) -> Result<()> {
@@ -84,19 +102,7 @@ fn run_server(options: Opt) -> Result<()> {
             .map(|x| Some(x))
             .chain(stream::once(Ok(None)));
 
-        let mut handler = IoHandler::new();
-        let rpc_command = RpcCommandImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
-        let rpc_select = RpcSelectImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
-        let rpc_dictation =
-            RpcDictationImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
-        let rpc_catchall =
-            RpcCatchallImpl(RpcHelper::new(engine.clone(), notifications_tx.clone()));
-        let rpc_engine = RpcEngineImpl(RpcHelper::new(engine.clone(), notifications_tx));
-        handler.extend_with(rpc_command.to_delegate());
-        handler.extend_with(rpc_select.to_delegate());
-        handler.extend_with(rpc_dictation.to_delegate());
-        handler.extend_with(rpc_catchall.to_delegate());
-        handler.extend_with(rpc_engine.to_delegate());
+        let handler = create_handler(engine.clone(), notifications_tx);
 
         let request_results = requests
             .and_then(move |r| {
