@@ -1,3 +1,6 @@
+#![cfg(windows)]
+#![cfg(target_arch = "x86")]
+#![cfg(target_env = "msvc")]
 extern crate stentorian;
 
 extern crate serde;
@@ -24,29 +27,29 @@ extern crate futures;
 extern crate tokio_core;
 extern crate tokio_io;
 
-mod rpc;
-mod rpcimpl;
 mod errors;
 mod linecodec;
 mod notifications;
+mod rpc;
+mod rpcimpl;
 
 use errors::*;
-use futures::Future;
-use futures::Stream;
 use futures::stream;
 use futures::sync::mpsc;
+use futures::Future;
+use futures::Stream;
 use jsonrpc_core::IoHandler;
 use linecodec::LineCodec;
 use rpc::*;
 use rpcimpl::*;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
+use std::{thread, time};
 use stentorian::engine::Engine;
+use structopt::StructOpt;
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
 use tokio_io::AsyncRead;
-use std::net::{IpAddr, SocketAddr};
-use std::{thread, time};
-use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "server")]
@@ -141,7 +144,7 @@ fn run_server(options: Opt) -> Result<()> {
     Ok(())
 }
 
-pub fn serve() -> Result<()> {
+fn serve() -> Result<()> {
     env_logger::init();
     let options = Opt::from_args();
 
@@ -152,4 +155,10 @@ pub fn serve() -> Result<()> {
 
     stentorian::initialize()?;
     run_server(options)
+}
+
+pub fn main() {
+    if let Err(e) = serve() {
+        println!("{}", e.0);
+    }
 }

@@ -2,8 +2,8 @@ use errors::*;
 use jsonrpc_core::{Notification, Params, Version};
 use serde::Serialize;
 use serde_json;
-use stentorian::engine::{EngineEvent, MicrophoneState};
 use stentorian::engine::Engine;
+use stentorian::engine::{EngineEvent, MicrophoneState};
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]

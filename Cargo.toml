@@ -3,7 +3,7 @@ name = "stentorian-server"
 version = "0.1.0"
 authors = ["Daniël Louwrink <daniel.louwrink@gmail.com>"]
 
-[dependencies]
+[target.i686-pc-windows-msvc.dependencies]
 stentorian = { path = "stentorian" }
 jsonrpc-core = "8.0"
 jsonrpc-macros = "8.0"
