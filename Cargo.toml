@@ -2,6 +2,9 @@
 name = "stentorian-server"
 version = "0.1.0"
 authors = ["Daniël Louwrink <daniel.louwrink@gmail.com>"]
+license = "LGPL-3.0"
+description = "Unofficial library for interacting with Nuance's Dragon NaturallySpeaking and Dragon Professional Individual."
+repository = "https://github.com/ocecaco/stentorian-server"
 
 [target.i686-pc-windows-msvc.dependencies]
 stentorian = "0.1"
