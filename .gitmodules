@@ -1,0 +1,3 @@
+[submodule "stentorian"]
+	path = stentorian
+	url = git@github.com:ocecaco/stentorian
