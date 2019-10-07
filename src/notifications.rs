@@ -1,4 +1,4 @@
-use errors::*;
+use crate::errors::*;
 use jsonrpc_core::{Notification, Params, Version};
 use serde::Serialize;
 use serde_json;
@@ -49,7 +49,7 @@ where
     let n = Notification {
         jsonrpc: Some(Version::V2),
         method: method.to_owned(),
-        params: Some(p),
+        params: p,
     };
 
     Ok(serde_json::to_string(&n)?)

@@ -1,12 +1,13 @@
-use errors::{Result};
+use crate::errors::Result;
+use crate::notifications::{create_notification, EngineNotification};
+use crate::rpc::*;
 use futures::sync::mpsc;
-use notifications::{create_notification, EngineNotification};
-use rpc::*;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use stentorian::engine::{CatchallGrammarControl, CommandGrammarControl, CommandGrammarEvent,
-                         DictationGrammarControl, Engine, EngineRegistration, MicrophoneState,
-                         SelectGrammarControl};
+use stentorian::engine::{
+    CatchallGrammarControl, CommandGrammarControl, CommandGrammarEvent, DictationGrammarControl,
+    Engine, EngineRegistration, MicrophoneState, SelectGrammarControl,
+};
 use stentorian::grammar::Grammar;
 use stentorian::resultparser::Matcher;
 
@@ -140,7 +141,8 @@ impl RpcSelect for RpcSelectImpl {
             notifications.unbounded_send(result).unwrap();
         };
 
-        let control = self.0
+        let control = self
+            .0
             .engine
             .select_grammar_load(&start_words, &through_words, callback)?;
         state.insert(id, control);

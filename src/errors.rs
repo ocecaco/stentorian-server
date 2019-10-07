@@ -1,7 +1,6 @@
+use failure::Error;
 use jsonrpc_core::Error as RpcError;
 use jsonrpc_core::ErrorCode;
-
-use failure::Error;
 
 pub type Result<T> = ::std::result::Result<T, MyError>;
 

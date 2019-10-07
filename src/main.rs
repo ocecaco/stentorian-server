@@ -1,55 +1,30 @@
 #![cfg(windows)]
 #![cfg(target_arch = "x86")]
 #![cfg(target_env = "msvc")]
-extern crate stentorian;
-
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-
-extern crate jsonrpc_core;
-
-#[macro_use]
-extern crate jsonrpc_macros;
-
-extern crate env_logger;
-#[macro_use]
-extern crate log;
-
-#[macro_use]
-extern crate structopt;
-
-extern crate failure;
-
-extern crate bytes;
-extern crate futures;
-extern crate tokio_core;
-extern crate tokio_io;
-
 mod errors;
 mod linecodec;
 mod notifications;
 mod rpc;
 mod rpcimpl;
 
-use errors::*;
+use crate::errors::*;
+use crate::linecodec::LineCodec;
+use crate::rpc::*;
+use crate::rpcimpl::*;
 use futures::stream;
 use futures::sync::mpsc;
 use futures::Future;
 use futures::Stream;
 use jsonrpc_core::IoHandler;
-use linecodec::LineCodec;
-use rpc::*;
-use rpcimpl::*;
+use log::{error, info};
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::{thread, time};
 use stentorian::engine::Engine;
 use structopt::StructOpt;
+use tokio_codec::Framed;
 use tokio_core::net::TcpListener;
 use tokio_core::reactor::Core;
-use tokio_io::AsyncRead;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "server")]
@@ -95,7 +70,8 @@ fn run_server(options: Opt) -> Result<()> {
 
     let server = listener.incoming().for_each(|(sock, _)| {
         info!("new connection");
-        let framed = AsyncRead::framed(sock, LineCodec);
+        // let framed = AsyncRead::framed(sock, LineCodec);
+        let framed = Framed::new(sock, LineCodec);
         let (responses, requests) = framed.split();
 
         let (notifications_tx, notifications_rx) = mpsc::unbounded();

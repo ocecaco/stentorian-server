@@ -2,27 +2,25 @@
 name = "stentorian-server"
 version = "0.1.0"
 authors = ["Daniël Louwrink <daniel.louwrink@gmail.com>"]
+edition = "2018"
 license = "LGPL-3.0"
 description = "Unofficial library for interacting with Nuance's Dragon NaturallySpeaking and Dragon Professional Individual."
 repository = "https://github.com/ocecaco/stentorian-server"
 
 [target.i686-pc-windows-msvc.dependencies]
-jsonrpc-core = "8.0"
-jsonrpc-macros = "8.0"
-serde = "1.0"
-serde_derive = "1.0"
+jsonrpc-core = "13.2"
+jsonrpc-derive = "13.2"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 failure = "0.1"
 log = "0.4"
 env_logger = "0.5"
 structopt = "0.2"
-
 futures = "0.1"
 tokio-io = "0.1"
 tokio-core = "0.1"
 tokio-proto = "0.1"
 tokio-service = "0.1"
+tokio-codec = "0.1"
 bytes = "0.4"
-
-[target.i686-pc-windows-msvc.dependencies.stentorian]
-path = "stentorian"
+stentorian = { path = "../stentorian" }
